@@ -1,4 +1,3 @@
-from itertools import product
 import numpy
 
 DIMENSIONS = 3
@@ -33,7 +32,6 @@ def create_projection():
     
     @see project()
     """
-    # DONE
     m = numpy.identity(DIMENSIONS + 1)
     m[-1][-1] = 0.
     m[-1][-2] = 1.
@@ -50,7 +48,6 @@ def create_scaling(axes):
     
     e.g., to zoom in the Y axis in 3D by 2, use create_scale([1, 2, 1]).
     """
-    # DONE
     return numpy.diag(list(axes) + [0])
 assert numpy.allclose(
     create_scaling([1, 2, 3]).dot([1, 1, 1, 1])[:-1],
@@ -64,7 +61,6 @@ def create_translation(point):
     
     e.g., to move in the Y axis in 2D by 2, use create_translation([0, 2]).
     """
-    # DONE
     m = numpy.identity(DIMENSIONS + 1)
     m[:, -1] = list(point) + [1.]
     return m
@@ -140,17 +136,6 @@ def create_cube(dimensions):
                           [(x, x + nv) for x in xrange(nv)]])
     return vertices, lines
 
-
-    # DONE
-    vertices = list(product(*[(0, 1)] * dimensions))
-    vertices_array = numpy.array(zip(*vertices))
-    num_vertices = 2 ** dimensions
-    lines = []
-    for i in range(num_vertices):
-        for j in range(i + 1, num_vertices):
-            if numpy.sum(abs(numpy.subtract(numpy.array(vertices[i]), numpy.array(vertices[j])))) == 1:
-                lines.append((i, j))
-    return numpy.array(vertices_array), numpy.array(lines)
 assert numpy.allclose(
     create_cube(2)[0],
     [[0, 1, 0, 1],
