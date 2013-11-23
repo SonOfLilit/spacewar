@@ -14,7 +14,8 @@ INTERVAL = 1.0 / 60.0
 
 
 class Renderer(object):
-    def __init__(self):
+    def __init__(self, world):
+        self.world = world
         self.x_size = X_SIZE
         self.y_size = Y_SIZE
         self.window = pyglet.window.Window(self.x_size, self.y_size,
@@ -33,7 +34,8 @@ class Renderer(object):
         self.window.event(self.on_draw)
 
     def create_bounding_cube(self):
-        bounding_vertices, bounding_lines = create_cube(DIMENSIONS)
+        cube = create_cube(DIMENSIONS)
+        bounding_vertices, bounding_lines = cube.vertices, cube.lines
         bounding_vertices *= .96
         bounding_vertices += .2
         self.bounding_cube = (bounding_vertices, bounding_lines)
@@ -47,7 +49,7 @@ class Renderer(object):
         glLoadIdentity()
 
         glDisable(GL_TEXTURE_2D)
-        self.render(*self.bounding_cube)
+        self.render()
         glEnable(GL_TEXTURE_2D)
 
         self.fps_counter.draw()
@@ -61,21 +63,27 @@ class Renderer(object):
     def update(self, dt):
         self.camera = self.camera.dot(self.CAMERA_ROTATION)
 
-    def render(self, vertices, lines, palette=PALETTE_BLUE):
+    def render(self, palette=PALETTE_BLUE):
         glLineWidth(LINE_WIDTH)
-        vertices = project(self.projection, self.camera, vertices)
-        for a, b in lines:
-            x1, y1, c1 = vertices[:, a]
-            x2, y2, c2 = vertices[:, b]
-            if c1 < 0 or c2 < 0:
-                continue
-            c1 = min(1., c1)
-            c2 = min(1., c2)
-            pyglet.graphics.draw(2, GL_LINES,
-                                 ('v2f', (x1, y1, x2, y2)),
-                                 ('c3B', palette.color(c1) + palette.color(c2)))
+        for obj in self.world.objects:
+            vertices, lines = obj.model.vertices, obj.model.lines
+            vertices = project(self.projection, self.camera, obj.object_to_world, vertices)
+            for a, b in lines:
+                x1, y1, c1 = vertices[:, a]
+                x2, y2, c2 = vertices[:, b]
+                if c1 < 0 or c2 < 0:
+                    continue
+                # weird fix for the depth coordinates, that would be displayed as color
+                c1 = min(1., c1)
+                c2 = min(1., c2)
 
+                pyglet.graphics.draw(2, GL_LINES,
+                                     ('v2f', (x1, y1, x2, y2)),
+                                     ('c3B', palette.color(c1) + palette.color(c2)))
 
-if __name__ == '__main__':
-    renderer = Renderer()
-    pyglet.app.run()
+    def run(self):
+        pyglet.app.run()
+
+#if __name__ == '__main__':
+#    renderer = Renderer()
+#    pyglet.app.run()

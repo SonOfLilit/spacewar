@@ -1,4 +1,5 @@
 import numpy
+from objects import Model
 
 DIMENSIONS = 3
 SCREEN_DIMENSIONS = 2
@@ -124,8 +125,9 @@ def create_cube(dimensions):
     and line segments between the points (C, B), (D, A), (A, C) and (B, D).
     """
     if dimensions == 1:
-        return numpy.array([[0, 1]]), numpy.array([(0, 1)])
-    v, l = create_cube(dimensions - 1)
+        return Model(numpy.array([[0, 1]]), numpy.array([(0, 1)]))
+    cube = create_cube(dimensions - 1)
+    v, l = cube.vertices, cube.lines
     nv = v.shape[1]
     nl = v.shape[0]
     vertices = numpy.hstack([v, v])
@@ -134,20 +136,26 @@ def create_cube(dimensions):
     lines = numpy.vstack([l,
                           [(x + nv, y + nv) for x, y in l],
                           [(x, x + nv) for x in xrange(nv)]])
-    return vertices, lines
+    return Model(vertices, lines)
 
 assert numpy.allclose(
-    create_cube(2)[0],
+    create_cube(2).vertices,
     [[0, 1, 0, 1],
      [0, 0, 1, 1]])
 assert numpy.allclose(
-    create_cube(2)[1],
+    create_cube(2).lines,
     [(0, 1), (2, 3), (0, 2), (1, 3)])
-assert create_cube(3)[0].shape[1] == 8
-assert create_cube(3)[1].shape[0] == 12
+
+assert create_cube(DIMENSIONS).vertices.shape == (DIMENSIONS, 2 ** DIMENSIONS)
+assert create_cube(DIMENSIONS).lines.shape == (2 ** (DIMENSIONS - 1) * DIMENSIONS, 2)
 
 
-def project(projection, camera, raw_vertices):
+#TODO
+def create_sphere(dimensions):
+    raise NotImplementedError
+
+
+def project(projection, camera, vertices_to_world, raw_vertices):
     """Apply camera matrix, then projection matrix, to source, which
     has 3D points as columns.
     """
@@ -157,7 +165,7 @@ def project(projection, camera, raw_vertices):
                                numpy.ones((1, raw_vertices.shape[1]),
                                           dtype=raw_vertices.dtype)))
     # apply camera, then projection
-    nonhomogenous = (projection.dot(camera.dot(homogenous)))
+    nonhomogenous = projection.dot(camera.dot(vertices_to_world)).dot(homogenous)
     # translate homogenous to 2D points: divide x, y by w
     screen_coordinates = nonhomogenous[:-1, :]
     screen_coordinates[:2] /= nonhomogenous[-1, :]
