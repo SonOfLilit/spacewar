@@ -147,19 +147,19 @@ assert create_cube(3)[0].shape[1] == 8
 assert create_cube(3)[1].shape[0] == 12
 
 
-def project(projection, camera, source):
+def project(projection, camera, raw_vertices):
     """Apply camera matrix, then projection matrix, to source, which
     has 3D points as columns.
     """
     # add a row of 1 values to the bottom, to convert 3D coordinates
     # to 3D homogenous coordinates
-    homogenous = numpy.vstack((source,
-                               numpy.ones((1, source.shape[1]),
-                                          dtype=source.dtype)))
+    homogenous = numpy.vstack((raw_vertices,
+                               numpy.ones((1, raw_vertices.shape[1]),
+                                          dtype=raw_vertices.dtype)))
     # apply camera, then projection
     nonhomogenous = (projection.dot(camera.dot(homogenous)))
     # translate homogenous to 2D points: divide x, y by w
-    vertices = nonhomogenous[:-1, :]
-    vertices[:2] /= nonhomogenous[-1, :]
-    assert vertices.shape == (SCREEN_DIMENSIONS + 1, source.shape[1])
-    return vertices
+    screen_coordinates = nonhomogenous[:-1, :]
+    screen_coordinates[:2] /= nonhomogenous[-1, :]
+    assert screen_coordinates.shape == (SCREEN_DIMENSIONS + 1, raw_vertices.shape[1])
+    return screen_coordinates
