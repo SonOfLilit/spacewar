@@ -1,4 +1,5 @@
 import numpy
+import collada
 
 DIMENSIONS = 3
 SCREEN_DIMENSIONS = 2
@@ -102,39 +103,61 @@ def create_cube(dimensions):
     Returns a `dimensions`-dimensional cube, e.g. a square (2D) or a hypercube (4D).
     The cube spans from [0, ..., 0] to [1, ..., 1].
     
-    The shape is returned as a tuple (vertices, lines) where vertices is a KxD table
-    (each column is a point in D dimensions, and there are K points) and lines is a
-    list of pairs of indices of rows in vertices.
+    The shape is returned as a tuple (vertices, triangles) where
+    vertices is a KxD table (each column is a point in D dimensions,
+    and there are K points) and triangles is a list of triplets of indices of
+    rows in vertices.
     
     e.g., a 1D cube (a line) would be
     ([[0],
       [1]],
-     [(0, 1)]),
+     [(0, 1, 0)]),
     and a 2D cube (a square) would be
     ([[0, 1, 0, 1],
       [0, 0, 1, 1]],
-     [(0, 1), (1, 2), (2, 3), (3, 0)]),
+     [(0, 1, 2), (2, 1, 0), (0, 3, 2), (2, 3, 0)]),
     which describes the points: {A: (0, 0), B: (1, 0), C: (0, 1), D: (1, 1)}
-    and line segments between the points (A, B), (B, C), (C, D) and (D, A),
-    or alternatively the "less orderly"
-    ([[0, 1, 0, 1],
-      [0, 1, 1, 0]],
-     [(2, 1), (3, 0), (0, 2), (1, 3)]),
-    which describes the points: {A: (0, 0), B: (1, 1), C: (0, 1), D: (1, 0)}
-    and line segments between the points (C, B), (D, A), (A, C) and (B, D).
+    and triangles (A, B, C) and (C, D, A) CW and CCW.
     """
     if dimensions == 1:
-        return numpy.array([[0, 1]]), numpy.array([(0, 1)])
-    v, l = create_cube(dimensions - 1)
+        return numpy.array([[0, 1]]), numpy.array([(0, 1, 0)])
+    vertices, faces = _create_cube_faces(dimensions)
+    triangles = []
+    for face in faces:
+        for t in face_to_triangles(face):
+            triangles.append(t)
+    return vertices, numpy.array(triangles)
+
+def _create_cube_faces(dimensions):
+    if dimensions == 1:
+        return numpy.array([[0., 1.]]), numpy.array([])
+    if dimensions == 2:
+        return numpy.array([[0., 1., 0., 1.],
+                            [0., 0., 1., 1.]]), numpy.array([(0, 1, 3, 2)])
+    v, f = _create_cube_faces(dimensions - 1)
     nv = v.shape[1]
-    nl = v.shape[0]
-    vertices = numpy.hstack([v, v])
-    vertices = numpy.vstack((vertices, numpy.zeros(shape=(1, vertices.shape[1]))))
-    vertices[-1, nv:] = 1
-    lines = numpy.vstack([l,
-                          [(x + nv, y + nv) for x, y in l],
-                          [(x, x + nv) for x in xrange(nv)]])
-    return vertices, lines
+    nf = f.shape[0]
+    # extrude all vertices in new axis
+    vertices = numpy.zeros((v.shape[0] + 1, v.shape[1] * 2))
+    for i in xrange(nv):
+        vertices[:-1, 2 * i] = v[:, i]
+        vertices[:-1, 2 * i + 1] = v[:, i]
+        vertices[-1, 2 * i + 1] = 1.
+    # all the originals, all their mirrors, and a connection from each
+    # old vertex with its right and the parallels on top
+    faces = []
+    for face in f:
+        faces.append(face)
+        opposite = [x + nv for x in face]
+        faces.append(tuple(opposite))
+        for i in xrange(4):
+            ii = (i + 1) % 4
+            faces.append((face[i], face[ii], face[ii] + nv, face[i] + nv))
+    return vertices, faces
+
+print _create_cube_faces(3)
+def face_to_triangles((a, b, c, d)):
+    return [(a, b, c), (c, b, a), (a, d, c), (c, d, a)]
 
 assert numpy.allclose(
     create_cube(2)[0],
@@ -142,10 +165,9 @@ assert numpy.allclose(
      [0, 0, 1, 1]])
 assert numpy.allclose(
     create_cube(2)[1],
-    [(0, 1), (2, 3), (0, 2), (1, 3)])
+    [(0, 1, 3), (3, 1, 0), (0, 2, 3), (3, 2, 0)])
 assert create_cube(3)[0].shape[1] == 8
-assert create_cube(3)[1].shape[0] == 12
-
+assert create_cube(3)[1].shape[0] == 2 * 12
 
 def project(projection, camera, source):
     """Apply camera matrix, then projection matrix, to source, which
@@ -157,9 +179,28 @@ def project(projection, camera, source):
                                numpy.ones((1, source.shape[1]),
                                           dtype=source.dtype)))
     # apply camera, then projection
-    nonhomogenous = (projection.dot(camera.dot(homogenous)))
+    nonhomogenous = projection.dot(camera).dot(homogenous)
     # translate homogenous to 2D points: divide x, y by w
     vertices = nonhomogenous[:-1, :]
     vertices[:2] /= nonhomogenous[-1, :]
     assert vertices.shape == (SCREEN_DIMENSIONS + 1, source.shape[1])
     return vertices
+
+
+def load_dae(filename):
+    mesh = collada.Collada(filename)
+    vertex_dict = {}
+    vertices = []
+    triangles = []
+    def point(p):
+        t = tuple(p)
+        if t not in vertex_dict:
+            vertex_dict[t] = len(vertex_dict)
+            vertices.append(t)
+        return vertex_dict[t]
+    for triangle in mesh.geometries[0].primitives[0].triangleset():
+        points = map(point, triangle.vertices)
+        assert len(points) == 3
+        triangles.append(points)
+    return numpy.array(vertices).transpose(), triangles
+
