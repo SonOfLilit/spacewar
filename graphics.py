@@ -98,109 +98,40 @@ assert numpy.allclose(
     [1/numpy.sqrt(2), 1/numpy.sqrt(2), 0])
 
 
-def create_cube(dimensions):
-    """
-    Returns a `dimensions`-dimensional cube, e.g. a square (2D) or a hypercube (4D).
-    The cube spans from [0, ..., 0] to [1, ..., 1].
-    
-    The shape is returned as a tuple (vertices, triangles) where
-    vertices is a KxD table (each column is a point in D dimensions,
-    and there are K points) and triangles is a list of triplets of indices of
-    rows in vertices.
-    
-    e.g., a 1D cube (a line) would be
-    ([[0],
-      [1]],
-     [(0, 1, 0)]),
-    and a 2D cube (a square) would be
-    ([[0, 1, 0, 1],
-      [0, 0, 1, 1]],
-     [(0, 1, 2), (2, 1, 0), (0, 3, 2), (2, 3, 0)]),
-    which describes the points: {A: (0, 0), B: (1, 0), C: (0, 1), D: (1, 1)}
-    and triangles (A, B, C) and (C, D, A) CW and CCW.
-    """
-    if dimensions == 1:
-        return numpy.array([[0, 1]]), numpy.array([(0, 1, 0)])
-    vertices, faces = _create_cube_faces(dimensions)
-    triangles = []
-    for face in faces:
-        for t in face_to_triangles(face):
-            triangles.append(t)
-    return vertices, numpy.array(triangles)
-
-def _create_cube_faces(dimensions):
-    if dimensions == 1:
-        return numpy.array([[0., 1.]]), numpy.array([])
-    if dimensions == 2:
-        return numpy.array([[0., 1., 0., 1.],
-                            [0., 0., 1., 1.]]), numpy.array([(0, 1, 3, 2)])
-    v, f = _create_cube_faces(dimensions - 1)
-    nv = v.shape[1]
-    nf = f.shape[0]
-    # extrude all vertices in new axis
-    vertices = numpy.zeros((v.shape[0] + 1, v.shape[1] * 2))
-    for i in xrange(nv):
-        vertices[:-1, 2 * i] = v[:, i]
-        vertices[:-1, 2 * i + 1] = v[:, i]
-        vertices[-1, 2 * i + 1] = 1.
-    # all the originals, all their mirrors, and a connection from each
-    # old vertex with its right and the parallels on top
-    faces = []
-    for face in f:
-        faces.append(face)
-        opposite = [x + nv for x in face]
-        faces.append(tuple(opposite))
-        for i in xrange(4):
-            ii = (i + 1) % 4
-            faces.append((face[i], face[ii], face[ii] + nv, face[i] + nv))
-    return vertices, faces
-
-print _create_cube_faces(3)
-def face_to_triangles((a, b, c, d)):
-    return [(a, b, c), (c, b, a), (a, d, c), (c, d, a)]
-
+def apply_matrix(matrix, vertices):
+    # add a row of 1 values to the bottom, to convert 3D coordinates
+    # to 3D homogenous coordinates
+    homogenous = numpy.vstack((vertices,
+                               numpy.ones((1, vertices.shape[1]),
+                                          dtype=vertices.dtype)))
+    return matrix.dot(homogenous)[:-1, :]
+_v = numpy.random.random((DIMENSIONS, 10))
 assert numpy.allclose(
-    create_cube(2)[0],
-    [[0, 1, 0, 1],
-     [0, 0, 1, 1]])
+    apply_matrix(create_identity(), _v),
+    _v
+)
 assert numpy.allclose(
-    create_cube(2)[1],
-    [(0, 1, 3), (3, 1, 0), (0, 2, 3), (3, 2, 0)])
-assert create_cube(3)[0].shape[1] == 8
-assert create_cube(3)[1].shape[0] == 2 * 12
+    apply_matrix(numpy.zeros([DIMENSIONS + 1] * 2), _v),
+    0 * _v
+)
+assert numpy.allclose(
+    apply_matrix(create_scaling([2.] * DIMENSIONS), _v),
+    2 * _v
+)
 
-def project(projection, camera, source):
+def project(projection, camera, vertices_to_world, raw_vertices):
     """Apply camera matrix, then projection matrix, to source, which
     has 3D points as columns.
     """
     # add a row of 1 values to the bottom, to convert 3D coordinates
     # to 3D homogenous coordinates
-    homogenous = numpy.vstack((source,
-                               numpy.ones((1, source.shape[1]),
-                                          dtype=source.dtype)))
+    homogenous = numpy.vstack((raw_vertices,
+                               numpy.ones((1, raw_vertices.shape[1]),
+                                          dtype=raw_vertices.dtype)))
     # apply camera, then projection
-    nonhomogenous = projection.dot(camera).dot(homogenous)
+    nonhomogenous = projection.dot(camera.dot(vertices_to_world)).dot(homogenous)
     # translate homogenous to 2D points: divide x, y by w
-    vertices = nonhomogenous[:-1, :]
-    vertices[:2] /= nonhomogenous[-1, :]
-    assert vertices.shape == (SCREEN_DIMENSIONS + 1, source.shape[1])
-    return vertices
-
-
-def load_dae(filename):
-    mesh = collada.Collada(filename)
-    vertex_dict = {}
-    vertices = []
-    triangles = []
-    def point(p):
-        t = tuple(p)
-        if t not in vertex_dict:
-            vertex_dict[t] = len(vertex_dict)
-            vertices.append(t)
-        return vertex_dict[t]
-    for triangle in mesh.geometries[0].primitives[0].triangleset():
-        points = map(point, triangle.vertices)
-        assert len(points) == 3
-        triangles.append(points)
-    return numpy.array(vertices).transpose(), triangles
-
+    screen_coordinates = nonhomogenous[:-1, :]
+    screen_coordinates[:2] /= nonhomogenous[-1, :]
+    assert screen_coordinates.shape == (SCREEN_DIMENSIONS + 1, raw_vertices.shape[1])
+    return screen_coordinates
